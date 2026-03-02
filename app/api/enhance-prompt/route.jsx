@@ -1,11 +1,17 @@
-import { chatSession } from "@/configs/AiModel";
+import { chatModel, defaultGenerationConfig } from "@/configs/AiModel";
 import Prompt from "@/data/Prompt";
 
 export async function POST(request) {
     try {
         const { prompt } = await request.json();
         
-        const result = await chatSession.sendMessageStream([
+        // CREATE A FRESH SESSION EVERY TIME (Fixes the 500 error!)
+        const enhanceSession = chatModel.startChat({
+            generationConfig: { ...defaultGenerationConfig, responseMimeType: "text/plain" },
+            history: [],
+        });
+        
+        const result = await enhanceSession.sendMessageStream([
             Prompt.ENHANCE_PROMPT_RULES,
             `Original prompt: ${prompt}`
         ]);
@@ -24,6 +30,7 @@ export async function POST(request) {
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify({enhancedPrompt: fullText.trim(), done: true})}\n\n`));
                     controller.close();
                 } catch (e) {
+                    console.error("Stream Error in enhance-prompt:", e);
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify({error: e.message, success: false})}\n\n`));
                     controller.close();
                 }
@@ -38,6 +45,7 @@ export async function POST(request) {
             },
         });
     } catch (error) {
+        console.error("API Route Error in enhance-prompt:", error);
         return new Response(JSON.stringify({ 
             error: error.message,
             success: false 
@@ -46,4 +54,4 @@ export async function POST(request) {
             headers: { 'Content-Type': 'application/json' },
         });
     }
-} 
+}

@@ -1,14 +1,15 @@
 "use client"
-import { MessagesContext } from '@/context/MessagesContext';
-import { api } from '@/convex/_generated/api';
+import React, { useContext, useState, useEffect, useCallback, memo } from 'react';
+import dynamic from 'next/dynamic';
 import Lookup from '@/data/Lookup';
+import { MessagesContext } from '@/context/MessagesContext';
+import axios from 'axios';
 import Prompt from '@/data/Prompt';
 import { useConvex, useMutation } from 'convex/react';
-import JSZip from 'jszip';
-import { Download, Loader2Icon } from 'lucide-react';
-import dynamic from 'next/dynamic';
 import { useParams } from 'next/navigation';
-import { useCallback, useContext, useEffect, useState } from 'react';
+import { api } from '@/convex/_generated/api';
+import { Loader2Icon, Download } from 'lucide-react';
+import JSZip from 'jszip';
 
 const SandpackProvider = dynamic(() => import("@codesandbox/sandpack-react").then(mod => mod.SandpackProvider), { ssr: false });
 const SandpackLayout = dynamic(() => import("@codesandbox/sandpack-react").then(mod => mod.SandpackLayout), { ssr: false });
@@ -70,16 +71,13 @@ function CodeView() {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let finalData = null;
-            let buffer = ''; // ADDED: Buffer to prevent chunk splitting errors
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
 
-                // FIX: Append to buffer and split safely
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop(); // Keep the last incomplete line in the buffer
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n');
 
                 for (const line of lines) {
                     if (line.startsWith('data: ')) {
@@ -123,8 +121,12 @@ function CodeView() {
     
     const downloadFiles = useCallback(async () => {
         try {
+            // Create a new JSZip instance
             const zip = new JSZip();
+            
+            // Add each file to the zip
             Object.entries(files).forEach(([filename, content]) => {
+                // Handle the file content based on its structure
                 let fileContent;
                 if (typeof content === 'string') {
                     fileContent = content;
@@ -132,15 +134,20 @@ function CodeView() {
                     if (content.code) {
                         fileContent = content.code;
                     } else {
+                        // If it's an object without code property, stringify it
                         fileContent = JSON.stringify(content, null, 2);
                     }
                 }
+
+                // Only add the file if we have content
                 if (fileContent) {
+                    // Remove leading slash if present
                     const cleanFileName = filename.startsWith('/') ? filename.slice(1) : filename;
                     zip.file(cleanFileName, fileContent);
                 }
             });
 
+            // Add package.json with dependencies
             const packageJson = {
                 name: "generated-project",
                 version: "1.0.0",
@@ -154,7 +161,10 @@ function CodeView() {
             };
             zip.file("package.json", JSON.stringify(packageJson, null, 2));
 
+            // Generate the zip file
             const blob = await zip.generateAsync({ type: "blob" });
+            
+            // Create download link and trigger download
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -185,6 +195,7 @@ function CodeView() {
                             Preview</h2>
                     </div>
                     
+                    {/* Download Button */}
                     <button
                         onClick={downloadFiles}
                         className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full transition-colors duration-200"
@@ -213,26 +224,23 @@ function CodeView() {
             >
                 <div className="relative">
                     <SandpackLayout>
-                        {/* FIX: Use CSS to hide/show tabs instead of unmounting them */}
-                        <div className={`flex w-full ${activeTab === 'code' ? 'block' : 'hidden'}`}>
+                        {activeTab=='code'?<>
                             <SandpackFileExplorer style={{ height: '80vh' }} />
                             <SandpackCodeEditor 
-                                style={{ height: '80vh', width: '100%' }}
-                                showTabs
-                                showLineNumbers
-                                showInlineErrors
-                                wrapContent 
-                            />
-                        </div>
-                        
-                        <div className={`flex w-full ${activeTab === 'preview' ? 'block' : 'hidden'}`}>
+                            style={{ height: '80vh' }}
+                            showTabs
+                            showLineNumbers
+                            showInlineErrors
+                            wrapContent />
+                        </>:
+                        <>
                             <SandpackPreview 
-                                style={{ height: '80vh', width: '100%' }} 
+                                style={{ height: '80vh' }} 
                                 showNavigator={true}
                                 showOpenInCodeSandbox={false}
                                 showRefreshButton={true}
                             />
-                        </div>
+                        </>}
                     </SandpackLayout>
                 </div>
             </SandpackProvider>

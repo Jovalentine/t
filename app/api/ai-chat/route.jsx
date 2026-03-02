@@ -1,9 +1,19 @@
-import { chatSession } from "@/configs/AiModel";
+import { chatModel, defaultGenerationConfig } from "@/configs/AiModel";
 
 export async function POST(req) {
-    const {prompt} = await req.json();
-
     try {
+        const { prompt } = await req.json();
+
+        if (!prompt) {
+            return new Response(JSON.stringify({error: 'Prompt is required'}), {status: 400});
+        }
+
+        // CREATE A FRESH SESSION FOR EVERY REQUEST
+        const chatSession = chatModel.startChat({
+            generationConfig: { ...defaultGenerationConfig, responseMimeType: "text/plain" },
+            history: [],
+        });
+
         const result = await chatSession.sendMessageStream(prompt);
         
         const encoder = new TextEncoder();
@@ -16,11 +26,11 @@ export async function POST(req) {
                         fullText += chunkText;
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify({chunk: chunkText})}\n\n`));
                     }
-                    // Send final complete response
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify({result: fullText, done: true})}\n\n`));
                     controller.close();
                 } catch (e) {
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({error: e.message || 'AI chat failed'})}\n\n`));
+                    console.error("Stream error in ai-chat:", e);
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({error: 'Chat stream failed', done: true})}\n\n`));
                     controller.close();
                 }
             },
@@ -34,6 +44,7 @@ export async function POST(req) {
             },
         });
     } catch(e) {
+        console.error("API Route Error in ai-chat:", e);
         return new Response(JSON.stringify({error: e.message || 'AI chat failed'}), {
             status: 500,
             headers: { 'Content-Type': 'application/json' },
