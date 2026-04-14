@@ -1,15 +1,14 @@
 "use client"
-import React, { useContext, useState, useEffect, useCallback, memo } from 'react';
-import dynamic from 'next/dynamic';
-import Lookup from '@/data/Lookup';
 import { MessagesContext } from '@/context/MessagesContext';
-import axios from 'axios';
+import { api } from '@/convex/_generated/api';
+import Lookup from '@/data/Lookup';
 import Prompt from '@/data/Prompt';
 import { useConvex, useMutation } from 'convex/react';
-import { useParams } from 'next/navigation';
-import { api } from '@/convex/_generated/api';
-import { Loader2Icon, Download } from 'lucide-react';
 import JSZip from 'jszip';
+import { Download, Loader2Icon, Rocket } from 'lucide-react'; // Added Rocket icon
+import dynamic from 'next/dynamic';
+import { useParams } from 'next/navigation';
+import { useCallback, useContext, useEffect, useState } from 'react';
 
 const SandpackProvider = dynamic(() => import("@codesandbox/sandpack-react").then(mod => mod.SandpackProvider), { ssr: false });
 const SandpackLayout = dynamic(() => import("@codesandbox/sandpack-react").then(mod => mod.SandpackLayout), { ssr: false });
@@ -24,7 +23,12 @@ function CodeView() {
     const { messages } = useContext(MessagesContext);
     const UpdateFiles = useMutation(api.workspace.UpdateFiles);
     const convex = useConvex();
+    
     const [loading, setLoading] = useState(false);
+    
+    // Deployment States
+    const [isDeploying, setIsDeploying] = useState(false);
+    const [liveUrl, setLiveUrl] = useState(null);
 
     const preprocessFiles = useCallback((files) => {
         const processed = {};
@@ -121,12 +125,8 @@ function CodeView() {
     
     const downloadFiles = useCallback(async () => {
         try {
-            // Create a new JSZip instance
             const zip = new JSZip();
-            
-            // Add each file to the zip
             Object.entries(files).forEach(([filename, content]) => {
-                // Handle the file content based on its structure
                 let fileContent;
                 if (typeof content === 'string') {
                     fileContent = content;
@@ -134,20 +134,16 @@ function CodeView() {
                     if (content.code) {
                         fileContent = content.code;
                     } else {
-                        // If it's an object without code property, stringify it
                         fileContent = JSON.stringify(content, null, 2);
                     }
                 }
 
-                // Only add the file if we have content
                 if (fileContent) {
-                    // Remove leading slash if present
                     const cleanFileName = filename.startsWith('/') ? filename.slice(1) : filename;
                     zip.file(cleanFileName, fileContent);
                 }
             });
 
-            // Add package.json with dependencies
             const packageJson = {
                 name: "generated-project",
                 version: "1.0.0",
@@ -161,10 +157,7 @@ function CodeView() {
             };
             zip.file("package.json", JSON.stringify(packageJson, null, 2));
 
-            // Generate the zip file
             const blob = await zip.generateAsync({ type: "blob" });
-            
-            // Create download link and trigger download
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -178,62 +171,115 @@ function CodeView() {
         }
     }, [files]);
 
+    // --- Direct Vercel Deployment Function ---
+    const handleDeploy = async () => {
+        setIsDeploying(true);
+        try {
+            const response = await fetch('/api/deploy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    files: files, 
+                    projectTitle: "my-ai-generated-app" 
+                }),
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                setLiveUrl(data.url);
+                window.open(data.url, '_blank'); // Opens the live site in a new tab
+            } else {
+                alert("Deployment failed: " + data.error);
+            }
+        } catch (error) {
+            console.error("Error calling deploy API:", error);
+            alert("Something went wrong during deployment.");
+        } finally {
+            setIsDeploying(false);
+        }
+    };
+
     return (
         <div className='relative'>
             <div className='bg-[#181818] w-full p-2 border'>
                 <div className='flex items-center justify-between'>
-                    <div className='flex items-center flex-wrap shrink-0 bg-black p-1 justify-center
-                    w-[140px] gap-3 rounded-full'>
+                    <div className='flex items-center flex-wrap shrink-0 bg-black p-1 justify-center w-[140px] gap-3 rounded-full'>
                         <h2 onClick={() => setActiveTab('code')}
-                            className={`text-sm cursor-pointer 
-                        ${activeTab == 'code' && 'text-blue-500 bg-blue-500 bg-opacity-25 p-1 px-2 rounded-full'}`}>
-                            Code</h2>
-
+                            className={`text-sm cursor-pointer ${activeTab == 'code' && 'text-blue-500 bg-blue-500 bg-opacity-25 p-1 px-2 rounded-full'}`}>
+                            Code
+                        </h2>
                         <h2 onClick={() => setActiveTab('preview')}
-                            className={`text-sm cursor-pointer 
-                        ${activeTab == 'preview' && 'text-blue-500 bg-blue-500 bg-opacity-25 p-1 px-2 rounded-full'}`}>
-                            Preview</h2>
+                            className={`text-sm cursor-pointer ${activeTab == 'preview' && 'text-blue-500 bg-blue-500 bg-opacity-25 p-1 px-2 rounded-full'}`}>
+                            Preview
+                        </h2>
                     </div>
                     
-                    {/* Download Button */}
-                    <button
-                        onClick={downloadFiles}
-                        className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full transition-colors duration-200"
-                    >
-                        <Download className="h-4 w-4" />
-                        <span>Download Files</span>
-                    </button>
+                    {/* Action Buttons Container */}
+                    <div className="flex items-center gap-3">
+                        {/* Download Button */}
+                        <button
+                            onClick={downloadFiles}
+                            className="flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-full transition-colors duration-200"
+                        >
+                            <Download className="h-4 w-4" />
+                            <span>Download Files</span>
+                        </button>
+
+                        {/* Deploy Button */}
+                        {liveUrl ? (
+                            <a 
+                                href={liveUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="flex items-center gap-2 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-full transition-colors duration-200"
+                            >
+                                <Rocket className="h-4 w-4" />
+                                <span>Live Site</span>
+                            </a>
+                        ) : (
+                            <button
+                                onClick={handleDeploy}
+                                disabled={isDeploying || !files}
+                                className="flex items-center gap-2 bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-full transition-colors duration-200 disabled:opacity-50"
+                            >
+                                {isDeploying ? <Loader2Icon className="h-4 w-4 animate-spin" /> : <Rocket className="h-4 w-4" />}
+                                <span>{isDeploying ? "Deploying..." : "Deploy"}</span>
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
+            
             <SandpackProvider 
-            files={files}
-            template="react" 
-            theme={'dark'}
-            customSetup={{
-                dependencies: {
-                    ...Lookup.DEPENDANCY
-                },
-                entry: '/index.js'
-            }}
-            options={{
-                externalResources: ['https://cdn.tailwindcss.com'],
-                bundlerTimeoutSecs: 120,
-                recompileMode: "immediate",
-                recompileDelay: 300
-            }}
+                files={files}
+                template="react" 
+                theme={'dark'}
+                customSetup={{
+                    dependencies: {
+                        ...Lookup.DEPENDANCY
+                    },
+                    entry: '/index.js'
+                }}
+                options={{
+                    externalResources: ['https://cdn.tailwindcss.com'],
+                    bundlerTimeoutSecs: 120,
+                    recompileMode: "immediate",
+                    recompileDelay: 300
+                }}
             >
                 <div className="relative">
                     <SandpackLayout>
-                        {activeTab=='code'?<>
+                        {activeTab == 'code' ? <>
                             <SandpackFileExplorer style={{ height: '80vh' }} />
                             <SandpackCodeEditor 
-                            style={{ height: '80vh' }}
-                            showTabs
-                            showLineNumbers
-                            showInlineErrors
-                            wrapContent />
-                        </>:
-                        <>
+                                style={{ height: '80vh' }}
+                                showTabs
+                                showLineNumbers
+                                showInlineErrors
+                                wrapContent 
+                            />
+                        </> : <>
                             <SandpackPreview 
                                 style={{ height: '80vh' }} 
                                 showNavigator={true}
@@ -245,8 +291,7 @@ function CodeView() {
                 </div>
             </SandpackProvider>
 
-            {loading&&<div className='p-10 bg-gray-900 opacity-80 absolute top-0 
-            rounded-lg w-full h-full flex items-center justify-center'>
+            {loading && <div className='p-10 bg-gray-900 opacity-80 absolute top-0 rounded-lg w-full h-full flex items-center justify-center'>
                 <Loader2Icon className='animate-spin h-10 w-10 text-white'/>
                 <h2 className='text-white'> Generating files...</h2>
             </div>}
