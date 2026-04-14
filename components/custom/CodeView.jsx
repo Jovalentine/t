@@ -5,7 +5,7 @@ import Lookup from '@/data/Lookup';
 import Prompt from '@/data/Prompt';
 import { useConvex, useMutation } from 'convex/react';
 import JSZip from 'jszip';
-import { Download, Loader2Icon, Rocket } from 'lucide-react'; // Added Rocket icon
+import { Download, Loader2Icon, Rocket } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { useParams } from 'next/navigation';
 import { useCallback, useContext, useEffect, useState } from 'react';
@@ -188,7 +188,12 @@ function CodeView() {
 
             if (data.success) {
                 setLiveUrl(data.url);
-                window.open(data.url, '_blank'); // Opens the live site in a new tab
+                // UX FIX: Alert the user about the build time
+                alert("Deployment started! It will take about 1-2 minutes for Vercel to build the site. Opening build logs now...");
+                
+                // UX FIX: Open the inspector URL so they don't see a 404 page
+                const targetUrl = data.inspectorUrl || data.url;
+                window.open(targetUrl, '_blank');
             } else {
                 alert("Deployment failed: " + data.error);
             }

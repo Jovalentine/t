@@ -17,11 +17,9 @@ export async function POST(req) {
         8. NO REGEX: Do not use Regular Expressions (Regex) for form validation. Use simple string checks (like .includes) to avoid backslash parsing errors.
         9. KEEP MOCK DATA MINIMAL: You MUST limit all mock data arrays to a MAXIMUM of 2 items.
         10. NO GHOST IMPORTS: If you import a component, you ABSOLUTELY MUST create that exact file in the "files" object.
-        11. WORKING IMAGES ONLY: Use 'https://picsum.photos/seed/{random}/800/600' for general photos.
         12. CONCISE CODE: Keep all text paragraphs, descriptions, and hero subtitles strictly under 2 sentences to avoid JSON truncation. Use 'lucide-react' for icons instead of inline SVGs.
         13. EXTREME BREVITY: You MUST keep your total code output under 500 lines across all files combined. Use simple Tailwind classes and only build the essential UI components requested.
-
-        Return exactly this structure:
+        14. NO CSS IMPORTS: DO NOT import any local CSS files (e.g., import './styles/index.css', import './App.css', or import './index.css') in ANY of your files. Tailwind is already loaded globally via CDN.
         {
           "projectTitle": "Dynamic Title",
           "explanation": "Explanation of the code",

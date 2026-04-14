@@ -13,15 +13,15 @@ export default {
     Generate a fully structured React project using Vite.  
 Ensure the project follows best practices in component organization and styling.  
 
-**Project Requirements:**  
-- Use **React** as the framework.  
-- Add as many functional features as possible.  
-- **Do not create an App.jsx file. Use App.js instead** and modify it accordingly.  
-- Use **Tailwind CSS** for styling and create a modern, visually appealing UI.  
-- Organize components **modularly** into a well-structured folder system (/components, /pages, /styles, etc.).  
-- Include reusable components like **buttons, cards, and forms** where applicable.  
-- Use **lucide-react** icons if needed for UI enhancement.  
-- Do not create a src folder.
+**Project Requirements:** - Use **React** as the framework.  
+    - Add as many functional features as possible.  
+    - **Do not create an App.jsx file. Use App.js instead** and modify it accordingly.  
+    - Use **Tailwind CSS** for styling and create a modern, visually appealing UI.  
+    - Organize components **modularly** into a well-structured folder system (/components, /pages, /hooks, etc.). DO NOT create a /styles folder.
+    - DO NOT import any local CSS files (like index.css or App.css) inside your components.
+    - Include reusable components like **buttons, cards, and forms** where applicable.  
+    - Use **lucide-react** icons if needed for UI enhancement.  
+    - Do not create a src folder.
 
 **Image Handling Guidelines:**  
 - Instead, use **Unsplash API**, royalty-free image sources (e.g., Pexels, Pixabay).

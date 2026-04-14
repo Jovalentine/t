@@ -8,7 +8,7 @@ export async function POST(req) {
       return new Response(JSON.stringify({ error: "No files provided" }), { status: 400 });
     }
 
-    // 1. EXTRACTION: Safely pull out any custom dependencies
+    // 1. Safely extract AI dependencies
     let aiDependencies = {};
     const aiPkgFile = files['package.json'] || files['/package.json'];
     if (aiPkgFile) {
@@ -21,64 +21,63 @@ export async function POST(req) {
         } catch (e) {}
     }
 
-    // 2. Format the AI files safely
+    // 2. Format AI files & Aggressively rename .js to .jsx
     let vercelFiles = Object.keys(files).map((filePath) => {
-      const cleanPath = filePath.replace(/^\//, '');
+      let cleanPath = filePath.replace(/^\//, '');
       let fileContent = "";
+      
       if (typeof files[filePath] === 'string') {
           fileContent = files[filePath];
       } else if (files[filePath] && typeof files[filePath] === 'object') {
           fileContent = files[filePath].code || JSON.stringify(files[filePath], null, 2);
       }
+
+      // Force JSX extension for any file containing React code
+      if (cleanPath.endsWith('.js') && (fileContent.includes('from "react"') || fileContent.includes("from 'react'") || fileContent.includes('</') || fileContent.includes('/>'))) {
+          cleanPath = cleanPath.replace(/\.js$/, '.jsx');
+      }
+
+      // Fix internal imports inside the files
+      fileContent = fileContent.replace(/\.js(['"])/g, '.jsx$1');
+
       return { file: cleanPath, data: fileContent };
     });
 
-    // 3. Delete core config files
+    // 3. Delete core config files so we can overwrite them safely
     const coreFilesToOverride = [
         'package.json', 'vite.config.js', 'index.html', 'index.js', 
-        'index.jsx', 'main.jsx', 'main.js', 'tailwind.config.js', 'postcss.config.js'
+        'index.jsx', 'main.jsx', 'main.js', 'tailwind.config.js', 'postcss.config.js', 'vercel.json'
     ];
     vercelFiles = vercelFiles.filter(f => !coreFilesToOverride.includes(f.file));
 
     // 4. THE CSS BLACK HOLE: Merge all CSS into one perfect file
     let masterCssContent = `@tailwind base;\n@tailwind components;\n@tailwind utilities;\n\n`;
-    
     vercelFiles.forEach(f => {
         if (f.file.endsWith('.css')) {
-            // Remove redundant tailwind tags so we don't duplicate them
             let cleanCss = f.data.replace(/@tailwind (base|components|utilities);/g, '');
-            
-            // Append to our master file
             masterCssContent += `\n/* --- CSS from ${f.file} --- */\n${cleanCss}\n`;
-            
-            // Empty the original file so Vite doesn't crash, but imports still resolve!
             f.data = `/* Content securely moved to master-tailwind.css */`;
         }
     });
+    vercelFiles.push({ file: 'master-tailwind.css', data: masterCssContent });
 
-    // Add our bulletproof master CSS
-    vercelFiles.push({
-        file: 'master-tailwind.css',
-        data: masterCssContent
-    });
-
-    // 5. TAILWIND CONFIG: Fixed the scanning warning to make builds ultra-fast
+    // 5. Tailwind & PostCSS Config
     vercelFiles.push({
         file: 'tailwind.config.js',
         data: `/** @type {import('tailwindcss').Config} */
 export default {
-  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}", "./*.{js,ts,jsx,tsx}"],
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}", "./*.{js,ts,jsx,tsx}", "./components/**/*.{js,ts,jsx,tsx}", "./pages/**/*.{js,ts,jsx,tsx}"],
   theme: { extend: {} },
   plugins: [],
 }`
     });
-
     vercelFiles.push({
         file: 'postcss.config.js',
         data: `export default { plugins: { tailwindcss: {}, autoprefixer: {} } }`
     });
 
-    // 6. ESBUILD HACK: Forces Vite to accept JSX inside .js files
+    // 6. VITE CONFIG WITH ESBUILD HACK
+    // This forces Vite to accept JSX inside .js files just in case the AI messes up
     vercelFiles.push({
         file: 'vite.config.js',
         data: `import { defineConfig } from 'vite';
@@ -91,7 +90,15 @@ export default defineConfig({
 });`
     });
 
-    // 7. SMART MERGE: Package.json
+    // 7. Vercel SPA Routing (Fixes 404s when refreshing pages)
+    vercelFiles.push({
+        file: 'vercel.json',
+        data: JSON.stringify({
+            "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+        }, null, 2)
+    });
+
+    // 8. SMART MERGE: Package.json
     vercelFiles.push({
         file: 'package.json',
         data: JSON.stringify({
@@ -120,7 +127,7 @@ export default defineConfig({
         }, null, 2)
     });
 
-    // 8. index.html
+    // 9. Root HTML
     vercelFiles.push({
         file: 'index.html',
         data: `<!DOCTYPE html>
@@ -137,27 +144,23 @@ export default defineConfig({
 </html>`
     });
 
-    // 9. SMART APP LOADER: Automatically mounts the Master CSS
+    // 10. React Entry Point (FIXED: Removed Double BrowserRouter)
     let appImportPath = './App';
-    if (vercelFiles.some(f => f.file === 'src/App.js' || f.file === 'src/App.jsx')) {
+    if (vercelFiles.some(f => f.file === 'src/App.jsx' || f.file === 'src/App.js')) {
         appImportPath = './src/App';
     }
-
     vercelFiles.push({
         file: 'index.jsx',
         data: `import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
 import App from '${appImportPath}';
-
-// Our master file guarantees Tailwind works everywhere!
 import './master-tailwind.css';
 
+// We removed the <BrowserRouter> wrapper here because the AI 
+// already adds it inside App.js!
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
-    </BrowserRouter>
+    <App />
   </React.StrictMode>
 );`
     });
@@ -178,7 +181,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       body: JSON.stringify({
         name: projectTitle ? projectTitle.toLowerCase().replace(/[^a-z0-9-]/g, '-') : "ai-generated-site",
         files: vercelFiles,
-        projectSettings: { framework: "vite" },
+        // 🔥 CRITICAL FIX: Explicitly forcing Vercel to install, build, and serve the output directory!
+        projectSettings: { 
+            framework: "vite",
+            buildCommand: "npm run build",
+            installCommand: "npm install",
+            outputDirectory: "dist"
+        },
       }),
     });
 
@@ -191,7 +200,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
     return new Response(JSON.stringify({ 
       success: true, 
-      url: `https://${data.url}`, 
+      url: `https://${data.url}`,
+      inspectorUrl: data.inspectorUrl,
       deploymentId: data.id 
     }), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
